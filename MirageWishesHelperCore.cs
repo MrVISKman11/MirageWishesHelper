@@ -29,7 +29,7 @@ namespace MirageWishesHelper
             var wishesPanel = FindMirageWishesPanel(ingameUi);
             if (wishesPanel == null || !wishesPanel.IsVisible) return;
 
-            // Try to extract individual options if panel follows the standard container structure
+            // Strategy 1: Extract individual option cards (arch cards)
             var options = GetWishOptions(wishesPanel);
             if (options.Count > 0)
             {
@@ -75,7 +75,7 @@ namespace MirageWishesHelper
                 }
             }
 
-            // Fallback: search text elements strictly within the panel (never root ingameUi)
+            // Strategy 2 (Fallback): Match any text element strictly inside the wishes panel
             var textElements = GetAllTextElements(wishesPanel).ToList();
             Element bestChoice = null;
             int maxWeight = Settings.MinWeightToHighlight.Value - 1;
@@ -129,7 +129,7 @@ namespace MirageWishesHelper
             if (_cachedPanelIndex >= 0 && _cachedPanelIndex < ui.ChildCount)
             {
                 var cached = ui.GetChildAtIndex(_cachedPanelIndex);
-                if (cached != null && cached.IsVisible && IsWishesStructure(cached))
+                if (cached != null && cached.IsVisible && IsWishesPanel(cached))
                 {
                     return cached;
                 }
@@ -141,7 +141,7 @@ namespace MirageWishesHelper
             {
                 var child = ui.GetChildAtIndex(i);
                 if (child == null || !child.IsVisible) continue;
-                if (IsWishesStructure(child))
+                if (IsWishesPanel(child))
                 {
                     _cachedPanelIndex = i;
                     return child;
@@ -151,20 +151,63 @@ namespace MirageWishesHelper
             return null;
         }
 
-        private static bool IsWishesStructure(Element panel)
+        private static bool IsWishesPanel(Element elem)
         {
-            if (panel == null || !panel.IsVisible || panel.ChildCount < 5) return false;
-            var container = panel.GetChildAtIndex(4);
-            if (container == null || container.ChildCount < 7) return false;
+            if (elem == null || !elem.IsVisible || elem.ChildCount < 2) return false;
 
-            // Verify wish options exist at expected indices (3, 4, 5)
-            for (int i = 3; i <= 5; i++)
+            // Check A: Standard AutoExile structure (child 4 has 7+ children)
+            if (elem.ChildCount >= 5)
             {
-                var option = container.GetChildAtIndex(i);
-                if (option == null || option.ChildCount < 3) return false;
+                var container = elem.GetChildAtIndex(4);
+                if (container != null && container.ChildCount >= 7)
+                {
+                    return true;
+                }
             }
 
-            return true;
+            // Check B: Header or child text contains "Wishes" or "Wish for "
+            if (CheckDirectOrChildText(elem, "Wishes") || 
+                CheckDirectOrChildText(elem, "Choose what you wish") ||
+                CheckDirectOrChildText(elem, "Wish for "))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool CheckDirectOrChildText(Element elem, string query)
+        {
+            if (elem == null || !elem.IsVisible) return false;
+
+            var direct = elem.Text ?? elem.TextNoTags;
+            if (!string.IsNullOrEmpty(direct) && direct.Contains(query, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (elem.Children != null)
+            {
+                foreach (var child in elem.Children)
+                {
+                    if (child == null || !child.IsVisible) continue;
+                    var t = child.Text ?? child.TextNoTags;
+                    if (!string.IsNullOrEmpty(t) && t.Contains(query, StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    // Check second level children
+                    if (child.Children != null)
+                    {
+                        foreach (var sub in child.Children)
+                        {
+                            if (sub == null || !sub.IsVisible) continue;
+                            var st = sub.Text ?? sub.TextNoTags;
+                            if (!string.IsNullOrEmpty(st) && st.Contains(query, StringComparison.OrdinalIgnoreCase))
+                                return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static List<Element> GetWishOptions(Element panel)
@@ -172,7 +215,7 @@ namespace MirageWishesHelper
             var result = new List<Element>();
             if (panel == null) return result;
 
-            // Standard layout: container is child 4, options are 3, 4, 5
+            // Strategy A: Standard layout (container is child 4, options are 3, 4, 5)
             if (panel.ChildCount >= 5)
             {
                 var container = panel.GetChildAtIndex(4);
@@ -181,29 +224,72 @@ namespace MirageWishesHelper
                     for (int i = 3; i <= 5; i++)
                     {
                         var opt = container.GetChildAtIndex(i);
-                        if (opt != null && opt.IsVisible)
+                        if (opt != null && opt.IsVisible && opt.GetClientRectCache.Width > 40)
                         {
                             result.Add(opt);
                         }
                     }
+                    if (result.Count == 3) return result;
                 }
             }
+
+            // Strategy B (Fallback): Find elements whose text starts with "Wish for "
+            // Climb up to the card container (width > 100, height > 150)
+            result.Clear();
+            var allTexts = GetAllTextElementsStatic(panel);
+            foreach (var textElem in allTexts)
+            {
+                var t = (textElem.Text ?? textElem.TextNoTags ?? "").Trim();
+                if (t.StartsWith("Wish for ", StringComparison.OrdinalIgnoreCase))
+                {
+                    Element card = textElem;
+                    Element curr = textElem.Parent;
+                    while (curr != null && curr != panel)
+                    {
+                        var rect = curr.GetClientRectCache;
+                        if (rect.Width > 100 && rect.Height > 150)
+                        {
+                            card = curr;
+                            break;
+                        }
+                        card = curr;
+                        curr = curr.Parent;
+                    }
+
+                    if (!result.Contains(card))
+                    {
+                        result.Add(card);
+                    }
+                }
+            }
+
             return result;
         }
 
         private IEnumerable<Element> GetAllTextElements(Element parent)
         {
-            if (parent == null || !parent.IsVisible) yield break;
-            
-            if (!string.IsNullOrEmpty(parent.Text) || !string.IsNullOrEmpty(parent.TextNoTags))
-                yield return parent;
+            return GetAllTextElementsStatic(parent);
+        }
 
-            if (parent.Children == null) yield break;
+        private static List<Element> GetAllTextElementsStatic(Element parent)
+        {
+            var list = new List<Element>();
+            CollectTexts(parent, list);
+            return list;
+        }
+
+        private static void CollectTexts(Element parent, List<Element> list)
+        {
+            if (parent == null || !parent.IsVisible) return;
+
+            if (!string.IsNullOrEmpty(parent.Text) || !string.IsNullOrEmpty(parent.TextNoTags))
+                list.Add(parent);
+
+            if (parent.Children == null) return;
 
             foreach (var child in parent.Children)
             {
-                foreach (var textElem in GetAllTextElements(child))
-                    yield return textElem;
+                CollectTexts(child, list);
             }
         }
     }
