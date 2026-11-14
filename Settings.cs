@@ -18,13 +18,19 @@ namespace MirageWishesHelper
         [JsonIgnore]
         public Dictionary<string, int> WishWeights { get; set; } = new Dictionary<string, int>
         {
+            { "Wish for Rust", 80000 },
             { "Breaking the Astral Chain in the Mirage Area will spawn Ridan, of the Afarud.", 80000 },
+            { "Wish for Tides", 70000 },
             { "Coin of Knowledge", 70000 },
+            { "Wish for Flames", 70000 },
             { "Coin of Power", 70000 },
+            { "Wish for Sands", 70000 },
             { "Coin of Skill", 70000 },
-            { "Mirage Area will contain an additional fountain of wealth.", 50000 },
+            { "Wish for Providence", 40000 },
             { "The Nameless Seer will appear on breaking the Astral Chain in the Mirage Area", 40000 },
+            { "Wish for Reflection", 30000 },
             { "A Reflecting Mist will appear on breaking the Astral Chain in the Mirage Area", 30000 },
+            { "Wish for Terror", 20000 },
             { "Breaking the Astral Chain in the Mirage Area will spawn a Pinnacle Atlas Boss from the Feared.", 20000 }
         };
     }
